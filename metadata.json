@@ -1,0 +1,7 @@
+{
+  "name": "周琢钦的英语乐园",
+  "description": "An interactive English learning app for children featuring voice-based conversation with Zootopia friends, pronunciation correction, and multiple character voices.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
