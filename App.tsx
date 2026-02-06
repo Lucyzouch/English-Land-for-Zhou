@@ -48,7 +48,7 @@ async function decodeAudioData(
 const App: React.FC = () => {
   const [selectedBuddyIds, setSelectedBuddyIds] = useState<BuddyId[]>([BUDDIES[0].id]);
   const [currentMode, setCurrentMode] = useState<PracticeMode>(PracticeMode.CHAT);
-  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'connecting' | 'active'>('idle');
+  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'connecting' | 'active' | 'denied'>('idle');
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isListening, setIsListening] = useState(false);
   
@@ -79,9 +79,10 @@ const App: React.FC = () => {
 
   const startConversation = async () => {
     if (selectedBuddies.length === 0) return;
-    setConnectionStatus('connecting');
-
+    
+    // First, try to get microphone access
     try {
+      setConnectionStatus('connecting');
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       
       const inputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
@@ -89,7 +90,6 @@ const App: React.FC = () => {
       audioContextRef.current = { input: inputCtx, output: outputCtx };
       
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      
       const personalities = selectedBuddies.map(b => `${b.name}: ${b.personality}`).join('\n');
       const voiceName = selectedBuddies[0].voice; 
 
@@ -166,15 +166,13 @@ const App: React.FC = () => {
 
       sessionRef.current = await sessionPromise;
     } catch (err) {
-      console.error('Failed to start conversation:', err);
-      setConnectionStatus('idle');
-      alert("Please allow microphone access to talk to your Zootopia friends!");
+      console.error('Microphone Error:', err);
+      setConnectionStatus('denied');
     }
   };
 
   const toggleBuddy = (buddyId: BuddyId) => {
     if (connectionStatus !== 'idle') stopConversation();
-    
     setSelectedBuddyIds(prev => {
       if (prev.includes(buddyId)) {
         if (prev.length === 1) return prev; 
@@ -192,7 +190,7 @@ const App: React.FC = () => {
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-gradient-to-b from-sky-100 to-white">
       {/* App Header */}
-      <header className="p-4 md:p-6 flex flex-col items-center shrink-0">
+      <header className="p-4 md:p-6 flex flex-col items-center shrink-0 z-20">
         <h1 className="text-3xl md:text-5xl text-blue-600 drop-shadow-sm flex items-center gap-3">
           <span>🚔</span> 周琢钦的英语乐园 <span>🍦</span>
         </h1>
@@ -202,8 +200,7 @@ const App: React.FC = () => {
       </header>
 
       {/* Mode & Character Sidebar/Top Bar */}
-      <div className="flex flex-col gap-4 px-4 overflow-y-auto no-scrollbar shrink-0 mb-4">
-        {/* Character Pickers */}
+      <div className="flex flex-col gap-4 px-4 overflow-y-auto no-scrollbar shrink-0 mb-4 z-20">
         <div className="flex justify-center gap-3 md:gap-5 py-2">
           {BUDDIES.map(buddy => (
             <Avatar 
@@ -215,7 +212,6 @@ const App: React.FC = () => {
           ))}
         </div>
 
-        {/* Mode Selectors */}
         <div className="flex justify-center gap-2 md:gap-3 flex-wrap max-w-3xl mx-auto">
           {PRACTICE_MODES.map(mode => (
             <button
@@ -236,19 +232,37 @@ const App: React.FC = () => {
 
       {/* Interaction Core */}
       <main className="flex-grow flex flex-col items-center justify-center p-4 relative">
+        {/* Permission Denied Overlay */}
+        {connectionStatus === 'denied' && (
+          <div className="absolute inset-0 bg-white/90 backdrop-blur-md z-50 flex flex-col items-center justify-center p-8 text-center">
+            <div className="w-48 h-48 bg-red-100 rounded-full flex items-center justify-center mb-6">
+               <span className="text-8xl">🚫🎤</span>
+            </div>
+            <h2 className="text-3xl font-kids text-red-600 mb-4">Microphone is Sleeping!</h2>
+            <p className="text-slate-600 text-lg mb-8 max-w-md">
+              Officer Judy needs your microphone to hear your awesome English! 
+              Please click the <b>"Allow"</b> button in your browser.
+            </p>
+            <button 
+              onClick={startConversation}
+              className="px-10 py-5 bg-blue-500 text-white rounded-full font-black text-2xl shadow-xl hover:bg-blue-600 active:scale-95 transition-all bouncy"
+            >
+              TRY AGAIN! 🚀
+            </button>
+            <p className="mt-6 text-slate-400 text-sm italic">
+              (Look for the lock icon 🔒 next to the website address if it's blocked)
+            </p>
+          </div>
+        )}
+
         <div className="w-full max-w-4xl flex flex-col items-center gap-10">
-          
-          {/* Main Visual Component */}
           <div className="relative flex items-center justify-center">
-            {/* Status Rings */}
             {connectionStatus === 'active' && (
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className={`w-full h-full rounded-full border-4 animate-pulse-ring ${selectedBuddies[0].color.replace('bg-', 'border-')}`}></div>
-                <div className={`absolute w-[120%] h-[120%] rounded-full border-2 opacity-20 animate-pulse-ring ${selectedBuddies[0].color.replace('bg-', 'border-')}`} style={{animationDelay: '0.5s'}}></div>
               </div>
             )}
 
-            {/* Avatars Display */}
             <div className="flex items-center justify-center gap-4 relative z-10 min-h-[16rem]">
               {selectedBuddies.map((buddy, index) => (
                 <div key={buddy.id} className="relative transition-all duration-500">
@@ -270,7 +284,6 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          {/* HUD Info */}
           <div className="text-center space-y-2 z-20">
             <h2 className="text-4xl font-kids text-slate-800 tracking-tight">
               {connectionStatus === 'idle' && "Ready for adventure?"}
@@ -282,10 +295,8 @@ const App: React.FC = () => {
             </p>
           </div>
 
-          {/* Visualizer & Controls */}
           <div className="w-full max-w-md flex flex-col items-center gap-6">
             <Visualizer isListening={isListening} isSpeaking={isSpeaking} color={selectedBuddies[0].color} />
-            
             <div className="w-full">
               {connectionStatus === 'idle' ? (
                 <button 
@@ -310,7 +321,6 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      {/* Minimal Footer */}
       <footer className="p-6 text-center shrink-0">
         <div className="inline-flex items-center gap-4 bg-white/40 px-6 py-2 rounded-full backdrop-blur-sm">
           <span className="text-xs font-bold text-slate-400">TIPS: Try saying "Hello Judy!"</span>
