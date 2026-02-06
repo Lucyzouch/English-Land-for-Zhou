@@ -4,38 +4,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>周琢钦的英语乐园</title>
+    <title>周琢钦的英语乐园 - Zootopia English Adventure</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Quicksand:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --app-bg: #F0F9FF;
+        }
         body {
             font-family: 'Quicksand', sans-serif;
-            overflow-x: hidden;
-            background-color: #F0F9FF;
+            background-color: var(--app-bg);
+            margin: 0;
+            overflow: hidden; /* Prevent body scroll for app-like feel */
         }
         h1, h2, h3, .font-kids {
             font-family: 'Fredoka One', cursive;
         }
         .bouncy {
-            transition: transform 0.2s;
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
         .bouncy:active {
-            transform: scale(0.95);
+            transform: scale(0.92);
         }
-        @keyframes wave {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-10px); }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.8); opacity: 0.5; }
+            100% { transform: scale(1.3); opacity: 0; }
         }
-        .animate-wave {
-            animation: wave 1.5s infinite ease-in-out;
+        .animate-pulse-ring {
+            animation: pulse-ring 2s infinite;
         }
-        /* Custom scrollbar for a cleaner look */
+        /* Hide scrollbars for a cleaner UI */
         .no-scrollbar::-webkit-scrollbar {
             display: none;
         }
         .no-scrollbar {
             -ms-overflow-style: none;
             scrollbar-width: none;
+        }
+        /* Custom Wave Animation for speaking */
+        @keyframes soft-wave {
+            0%, 100% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }
+            50% { border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%; }
+        }
+        .speaking-blob {
+            animation: soft-wave 3s infinite ease-in-out;
         }
     </style>
 <script type="importmap">
@@ -50,6 +62,6 @@
 </script>
 </head>
 <body class="bg-sky-50 text-slate-800">
-    <div id="root"></div>
+    <div id="root" class="h-screen w-screen"></div>
 </body>
 </html>

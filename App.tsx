@@ -1,12 +1,12 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
-import { Buddy, BuddyId, ChatMessage, PracticeMode } from './types';
+import { Buddy, BuddyId, PracticeMode } from './types';
 import { BUDDIES, SYSTEM_INSTRUCTION_BASE, PRACTICE_MODES } from './constants';
 import { Avatar } from './components/Avatar';
 import { Visualizer } from './components/Visualizer';
 
-// Helper for encoding/decoding
+// Audio Helpers
 function encode(bytes: Uint8Array) {
   let binary = '';
   const len = bytes.byteLength;
@@ -48,15 +48,11 @@ async function decodeAudioData(
 const App: React.FC = () => {
   const [selectedBuddyIds, setSelectedBuddyIds] = useState<BuddyId[]>([BUDDIES[0].id]);
   const [currentMode, setCurrentMode] = useState<PracticeMode>(PracticeMode.CHAT);
-  const [isActive, setIsActive] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'connecting' | 'active'>('idle');
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isListening, setIsListening] = useState(false);
   
-  const audioContextRef = useRef<{
-    input: AudioContext;
-    output: AudioContext;
-  } | null>(null);
-  
+  const audioContextRef = useRef<{ input: AudioContext; output: AudioContext } | null>(null);
   const sessionRef = useRef<any>(null);
   const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const nextStartTimeRef = useRef<number>(0);
@@ -76,13 +72,14 @@ const App: React.FC = () => {
     }
     sourcesRef.current.forEach(s => s.stop());
     sourcesRef.current.clear();
-    setIsActive(false);
+    setConnectionStatus('idle');
     setIsListening(false);
     setIsSpeaking(false);
   }, []);
 
   const startConversation = async () => {
     if (selectedBuddies.length === 0) return;
+    setConnectionStatus('connecting');
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -97,7 +94,7 @@ const App: React.FC = () => {
       const voiceName = selectedBuddies[0].voice; 
 
       const sessionPromise = ai.live.connect({
-        model: 'gemini-2.5-flash-native-audio-preview',
+        model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
@@ -109,7 +106,7 @@ const App: React.FC = () => {
         },
         callbacks: {
           onopen: () => {
-            setIsActive(true);
+            setConnectionStatus('active');
             setIsListening(true);
 
             const source = inputCtx.createMediaStreamSource(stream);
@@ -157,7 +154,7 @@ const App: React.FC = () => {
             }
           },
           onclose: () => {
-            setIsActive(false);
+            setConnectionStatus('idle');
             setIsListening(false);
           },
           onerror: (e) => {
@@ -170,12 +167,13 @@ const App: React.FC = () => {
       sessionRef.current = await sessionPromise;
     } catch (err) {
       console.error('Failed to start conversation:', err);
-      setIsActive(false);
+      setConnectionStatus('idle');
+      alert("Please allow microphone access to talk to your Zootopia friends!");
     }
   };
 
   const toggleBuddy = (buddyId: BuddyId) => {
-    if (isActive) stopConversation();
+    if (connectionStatus !== 'idle') stopConversation();
     
     setSelectedBuddyIds(prev => {
       if (prev.includes(buddyId)) {
@@ -187,128 +185,138 @@ const App: React.FC = () => {
   };
 
   const handleModeChange = (mode: PracticeMode) => {
-    if (isActive) stopConversation();
+    if (connectionStatus !== 'idle') stopConversation();
     setCurrentMode(mode);
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center p-4 max-w-5xl mx-auto">
-      {/* Header */}
-      <header className="w-full text-center py-6">
-        <h1 className="text-4xl md:text-5xl text-blue-600 mb-2 drop-shadow-sm flex flex-wrap items-center justify-center gap-3">
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-gradient-to-b from-sky-100 to-white">
+      {/* App Header */}
+      <header className="p-4 md:p-6 flex flex-col items-center shrink-0">
+        <h1 className="text-3xl md:text-5xl text-blue-600 drop-shadow-sm flex items-center gap-3">
           <span>🚔</span> 周琢钦的英语乐园 <span>🍦</span>
         </h1>
-        <p className="text-lg text-slate-500 font-medium italic">English Paradise — Zhou Zhuoqin's Playground!</p>
+        <p className="text-sm md:text-base text-slate-500 font-bold tracking-widest uppercase mt-1">
+          Zootopia English Adventure
+        </p>
       </header>
 
-      {/* Buddy Selection */}
-      <div className="w-full flex justify-center gap-4 md:gap-6 mb-4 overflow-x-auto py-4 px-2 no-scrollbar">
-        {BUDDIES.map(buddy => (
-          <Avatar 
-            key={buddy.id}
-            buddy={buddy} 
-            isActive={selectedBuddyIds.includes(buddy.id)}
-            onClick={() => toggleBuddy(buddy.id)}
-          />
-        ))}
+      {/* Mode & Character Sidebar/Top Bar */}
+      <div className="flex flex-col gap-4 px-4 overflow-y-auto no-scrollbar shrink-0 mb-4">
+        {/* Character Pickers */}
+        <div className="flex justify-center gap-3 md:gap-5 py-2">
+          {BUDDIES.map(buddy => (
+            <Avatar 
+              key={buddy.id}
+              buddy={buddy} 
+              isActive={selectedBuddyIds.includes(buddy.id)}
+              onClick={() => toggleBuddy(buddy.id)}
+            />
+          ))}
+        </div>
+
+        {/* Mode Selectors */}
+        <div className="flex justify-center gap-2 md:gap-3 flex-wrap max-w-3xl mx-auto">
+          {PRACTICE_MODES.map(mode => (
+            <button
+              key={mode.id}
+              onClick={() => handleModeChange(mode.id)}
+              className={`px-4 py-2 rounded-2xl border-2 text-sm font-bold transition-all flex items-center gap-2 bouncy shadow-sm ${
+                currentMode === mode.id 
+                  ? 'bg-sky-500 border-sky-600 text-white scale-105 ring-2 ring-sky-200' 
+                  : 'bg-white border-slate-100 text-slate-500 hover:border-sky-300'
+              }`}
+            >
+              <span>{mode.icon}</span>
+              <span className="hidden sm:inline">{mode.name}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Mode Selection */}
-      <div className="w-full grid grid-cols-2 md:grid-cols-4 gap-3 mb-8 px-2">
-        {PRACTICE_MODES.map(mode => (
-          <button
-            key={mode.id}
-            onClick={() => handleModeChange(mode.id)}
-            className={`p-3 rounded-2xl border-2 transition-all flex flex-col items-center gap-1 bouncy ${
-              currentMode === mode.id 
-                ? 'bg-sky-500 border-sky-600 text-white shadow-lg scale-105' 
-                : 'bg-white border-slate-100 text-slate-600 hover:border-sky-300'
-            }`}
-          >
-            <span className="text-2xl">{mode.icon}</span>
-            <span className="text-xs font-black uppercase tracking-tight">{mode.name}</span>
-            <span className={`text-[9px] font-medium ${currentMode === mode.id ? 'text-sky-100' : 'text-slate-400'}`}>
-              {mode.description}
-            </span>
-          </button>
-        ))}
-      </div>
-
-      {/* Main Interactive Zone */}
-      <main className="w-full flex-grow flex flex-col items-center justify-center">
-        
-        {/* Friend Party View - Full width and centered */}
-        <div className="w-full max-w-2xl bg-white/50 backdrop-blur-sm rounded-[3rem] p-8 md:p-12 flex flex-col items-center gap-8 border-4 border-white shadow-xl relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-transparent to-white/20 pointer-events-none"></div>
+      {/* Interaction Core */}
+      <main className="flex-grow flex flex-col items-center justify-center p-4 relative">
+        <div className="w-full max-w-4xl flex flex-col items-center gap-10">
           
-          <div className="flex flex-wrap justify-center items-center gap-6 md:gap-12 min-h-[16rem]">
-            {selectedBuddies.map((buddy, index) => (
-              <div key={buddy.id} className="relative group">
-                <div className={`absolute -inset-6 rounded-full blur-3xl opacity-40 ${buddy.color} animate-pulse`}></div>
-                <img 
-                  src={buddy.avatar} 
-                  alt={buddy.name} 
-                  className={`rounded-full border-4 border-white shadow-2xl bg-white p-3 relative z-10 transition-all duration-300
-                    ${selectedBuddies.length === 1 ? 'w-56 h-56 md:w-72 md:h-72' : 'w-28 h-28 md:w-40 md:h-40'}
-                    ${isSpeaking ? 'animate-wave scale-110' : 'scale-100'}`}
-                  style={{ animationDelay: `${index * 0.2}s` }}
-                />
-                <div className={`absolute -bottom-3 left-1/2 -translate-x-1/2 z-20 px-4 py-1 rounded-full text-white text-sm font-bold shadow-md ${buddy.color}`}>
-                  {buddy.name.split(' ')[0]}
-                </div>
+          {/* Main Visual Component */}
+          <div className="relative flex items-center justify-center">
+            {/* Status Rings */}
+            {connectionStatus === 'active' && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className={`w-full h-full rounded-full border-4 animate-pulse-ring ${selectedBuddies[0].color.replace('bg-', 'border-')}`}></div>
+                <div className={`absolute w-[120%] h-[120%] rounded-full border-2 opacity-20 animate-pulse-ring ${selectedBuddies[0].color.replace('bg-', 'border-')}`} style={{animationDelay: '0.5s'}}></div>
               </div>
-            ))}
-          </div>
-          
-          <div className="text-center z-10 w-full">
-            <h2 className="text-3xl font-kids text-slate-700 mb-2">
-              {selectedBuddies.length > 1 ? "Zootopia Party! 🎈" : selectedBuddies[0].name}
-            </h2>
-            <div className="flex items-center justify-center gap-3">
-               <span className="bg-sky-100 text-sky-600 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
-                 Mode: {activeModeInfo.name}
-               </span>
-               {isActive && (
-                 <div className="flex items-center gap-2 bg-green-100 px-3 py-1 rounded-full">
-                   <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                   <span className="text-green-600 text-[10px] font-bold uppercase">Live</span>
-                 </div>
-               )}
+            )}
+
+            {/* Avatars Display */}
+            <div className="flex items-center justify-center gap-4 relative z-10 min-h-[16rem]">
+              {selectedBuddies.map((buddy, index) => (
+                <div key={buddy.id} className="relative transition-all duration-500">
+                  <div className={`absolute -inset-8 rounded-full blur-3xl opacity-30 ${buddy.color} ${isSpeaking ? 'animate-pulse' : 'opacity-0'}`}></div>
+                  <img 
+                    src={buddy.avatar} 
+                    alt={buddy.name} 
+                    className={`rounded-full border-8 border-white shadow-2xl bg-white p-4 relative z-10 transition-all duration-500
+                      ${selectedBuddies.length === 1 ? 'w-64 h-64 md:w-80 md:h-80' : 'w-32 h-32 md:w-48 md:h-48'}
+                      ${isSpeaking ? 'scale-110 shadow-sky-200 speaking-blob' : 'scale-100'}
+                      ${connectionStatus === 'connecting' ? 'animate-bounce grayscale' : ''}`}
+                    style={{ animationDelay: `${index * 0.15}s` }}
+                  />
+                  <div className={`absolute -bottom-4 left-1/2 -translate-x-1/2 z-20 px-6 py-1.5 rounded-full text-white text-lg font-black shadow-lg ${buddy.color} ring-4 ring-white`}>
+                    {buddy.name.split(' ')[0]}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
-          <Visualizer isListening={isListening} isSpeaking={isSpeaking} color={selectedBuddies[0].color} />
-
-          <div className="w-full flex justify-center pt-4">
-            {!isActive ? (
-              <button 
-                onClick={startConversation}
-                className="w-full max-w-sm px-10 py-6 text-3xl text-white font-black rounded-[2rem] shadow-[0_12px_0_rgb(37,99,235)] bg-blue-500 hover:bg-blue-600 hover:shadow-[0_10px_0_rgb(37,99,235)] active:translate-y-1 active:shadow-none transition-all bouncy flex items-center justify-center gap-4"
-              >
-                <span>TALK NOW!</span>
-                <span className="text-4xl">🎤</span>
-              </button>
-            ) : (
-              <button 
-                onClick={stopConversation}
-                className="w-full max-w-sm px-10 py-6 text-3xl text-white font-black rounded-[2rem] shadow-[0_12px_0_rgb(220,38,38)] bg-red-500 hover:bg-red-600 hover:shadow-[0_10px_0_rgb(220,38,38)] active:translate-y-1 active:shadow-none transition-all bouncy flex items-center justify-center gap-4"
-              >
-                <span>STOP</span>
-                <span className="text-4xl">👋</span>
-              </button>
-            )}
+          {/* HUD Info */}
+          <div className="text-center space-y-2 z-20">
+            <h2 className="text-4xl font-kids text-slate-800 tracking-tight">
+              {connectionStatus === 'idle' && "Ready for adventure?"}
+              {connectionStatus === 'connecting' && "Finding your friends..."}
+              {connectionStatus === 'active' && (isSpeaking ? "Your friend is talking!" : "It's your turn! Speak English!")}
+            </h2>
+            <p className="text-slate-400 font-bold uppercase tracking-widest text-sm">
+              Current Mission: <span className="text-sky-500 underline decoration-2 underline-offset-4">{activeModeInfo.description}</span>
+            </p>
           </div>
-          
-          {!isActive && (
-             <p className="text-slate-400 text-sm font-medium animate-bounce mt-4">
-               Click the button to start your English adventure!
-             </p>
-          )}
+
+          {/* Visualizer & Controls */}
+          <div className="w-full max-w-md flex flex-col items-center gap-6">
+            <Visualizer isListening={isListening} isSpeaking={isSpeaking} color={selectedBuddies[0].color} />
+            
+            <div className="w-full">
+              {connectionStatus === 'idle' ? (
+                <button 
+                  onClick={startConversation}
+                  className="w-full py-8 text-4xl text-white font-black rounded-full shadow-[0_15px_0_rgb(37,99,235)] bg-blue-500 hover:bg-blue-600 hover:shadow-[0_10px_0_rgb(37,99,235)] active:translate-y-2 active:shadow-none transition-all bouncy flex items-center justify-center gap-6"
+                >
+                  <span>START TALKING</span>
+                  <span className="text-5xl">🎤</span>
+                </button>
+              ) : (
+                <button 
+                  onClick={stopConversation}
+                  disabled={connectionStatus === 'connecting'}
+                  className={`w-full py-8 text-4xl text-white font-black rounded-full shadow-[0_15px_0_rgb(220,38,38)] bg-red-500 hover:bg-red-600 hover:shadow-[0_10px_0_rgb(220,38,38)] active:translate-y-2 active:shadow-none transition-all bouncy flex items-center justify-center gap-6 ${connectionStatus === 'connecting' ? 'opacity-50 cursor-wait' : ''}`}
+                >
+                  <span>{connectionStatus === 'connecting' ? 'CONNECTING...' : 'STOP'}</span>
+                  <span className="text-5xl">{connectionStatus === 'connecting' ? '⌛' : '👋'}</span>
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </main>
 
-      <footer className="mt-12 mb-6 w-full text-center">
-        <p className="text-slate-400 text-sm font-medium tracking-wide">✨ Practice makes perfect! Speak English every day! ✨</p>
+      {/* Minimal Footer */}
+      <footer className="p-6 text-center shrink-0">
+        <div className="inline-flex items-center gap-4 bg-white/40 px-6 py-2 rounded-full backdrop-blur-sm">
+          <span className="text-xs font-bold text-slate-400">TIPS: Try saying "Hello Judy!"</span>
+          <div className="w-1 h-1 rounded-full bg-slate-300"></div>
+          <span className="text-xs font-bold text-sky-500 uppercase">English Practice Level: Master</span>
+        </div>
       </footer>
     </div>
   );
